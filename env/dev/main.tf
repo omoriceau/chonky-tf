@@ -22,9 +22,9 @@ provider "aws" {
 module "network" {
   source = "../../modules/network"
 
-  env         = var.env
-  name_prefix = var.name_prefix
-  vpc_cidr    = var.vpc_cidr
+  env           = var.env
+  name_prefix   = var.name_prefix
+  vpc_cidr      = var.vpc_cidr
   subnet_a_cidr = var.subnet_a_cidr
   subnet_b_cidr = var.subnet_b_cidr
 }

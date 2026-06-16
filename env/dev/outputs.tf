@@ -23,3 +23,18 @@ output "db_port" {
   description = "RDS database port"
   value       = module.rds.db_port
 }
+
+output "rds_security_group_id" {
+  description = "RDS security group ID"
+  value       = module.rds.security_group_id
+}
+
+output "subnet_a_id" {
+  description = "First subnet ID"
+  value       = module.network.subnet_a_id
+}
+
+output "subnet_b_id" {
+  description = "First subnet ID"
+  value       = module.network.subnet_b_id
+}

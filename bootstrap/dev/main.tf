@@ -12,7 +12,8 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "state" {
-  bucket = "chonky-tfstate-${var.env}"
+  bucket        = "chonky-tfstate-${var.env}"
+  force_destroy = true
 
   tags = {
     Name        = "chonky-tfstate-${var.env}"
