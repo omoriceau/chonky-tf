@@ -44,7 +44,7 @@ variable "instance_class" {
 variable "engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "15.4"
+  default     = "18.3"
 }
 
 variable "allocated_storage" {
@@ -56,5 +56,5 @@ variable "allocated_storage" {
 variable "backup_retention_period" {
   description = "Backup retention period in days"
   type        = number
-  default     = 0
+  default     = 1
 }
