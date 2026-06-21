@@ -6,5 +6,6 @@ terraform.tfvars
 *.tfvars
 !*.tfvars.example
 .env
+*.pem
 !.env.example
 crash.log
