@@ -76,3 +76,26 @@ variable "backup_retention_period" {
   type        = number
   default     = 7
 }
+
+variable "stripe_secret_key" {
+  description = "Stripe secret API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "event_bus_name" {
+  description = "EventBridge event bus name"
+  type        = string
+  default     = "chonkychonk-bus"
+}
+
+variable "stripe_intent_source_dir" {
+  description = "Path to stripe_intent Lambda source code"
+  type        = string
+}
+
+variable "payments_api_source_dir" {
+  description = "Path to payments_api Lambda source code"
+  type        = string
+}
+
