@@ -18,6 +18,12 @@ output "db_name" {
   value       = aws_db_instance.this.db_name
 }
 
+output "db_user" {
+  description = "Database master username"
+  value       = aws_db_instance.this.username
+  sensitive   = true
+}
+
 output "security_group_id" {
   description = "Security group ID for the database"
   value       = aws_security_group.db.id

@@ -58,3 +58,16 @@ variable "backup_retention_period" {
   type        = number
   default     = 1
 }
+
+variable "skip_final_snapshot" {
+  description = "Skip final snapshot on destroy — set false for prod"
+  type        = bool
+  default     = false
+}
+
+variable "final_snapshot_identifier" {
+  description = "Final snapshot identifier when skip_final_snapshot is false"
+  type        = string
+  default     = null
+}
+

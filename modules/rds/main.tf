@@ -2,6 +2,7 @@ resource "aws_security_group" "db" {
   name        = "${var.name_prefix}-db-sg"
   description = "Firewall for ${var.name_prefix} database"
   vpc_id      = var.vpc_id
+  revoke_rules_on_delete = true
 
   tags = {
     Name        = "${var.name_prefix}-db-sg"
@@ -36,12 +37,13 @@ resource "aws_db_instance" "this" {
   backup_retention_period    = var.backup_retention_period
   multi_az                   = false
   publicly_accessible        = false
-  auto_minor_version_upgrade = false
+  auto_minor_version_upgrade = true
 
   allocated_storage = var.allocated_storage
-  storage_type      = "gp2"
+  storage_type      = "gp3"
 
-  skip_final_snapshot = true
+  skip_final_snapshot       = var.skip_final_snapshot
+  final_snapshot_identifier = var.final_snapshot_identifier
 
   tags = {
     Name        = "${var.name_prefix}-instance"
