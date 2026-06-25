@@ -24,6 +24,17 @@ output "db_port" {
   value       = module.rds.db_port
 }
 
+output "db_name" {
+  description = "RDS database name"
+  value       = module.rds.db_name
+}
+
+output "db_user" {
+  description = "RDS database user"
+  value       = module.rds.db_user
+  sensitive   = true
+}
+
 output "rds_security_group_id" {
   description = "RDS security group ID"
   value       = module.rds.security_group_id
@@ -35,32 +46,6 @@ output "subnet_a_id" {
 }
 
 output "subnet_b_id" {
-  description = "First subnet ID"
+  description = "Second subnet ID"
   value       = module.network.subnet_b_id
 }
-
-output "stripe_intent_function_arn" {
-  description = "Stripe Intent Lambda ARN"
-  value       = module.stripe_intent.function_arn
-}
-
-output "stripe_intent_function_name" {
-  description = "Stripe Intent Lambda name"
-  value       = module.stripe_intent.function_name
-}
-
-output "payments_api_function_arn" {
-  description = "Payments API Lambda ARN"
-  value       = module.payments_api.function_arn
-}
-
-output "payments_api_function_name" {
-  description = "Payments API Lambda name"
-  value       = module.payments_api.function_name
-}
-
-output "vpc_lambda_security_group_id" {
-  description = "VPC Lambda security group ID"
-  value       = aws_security_group.vpc_lambda.id
-}
-

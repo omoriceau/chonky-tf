@@ -4,14 +4,18 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
+
   }
 
-  backend "s3" {
-    bucket  = "chonky-tfstate-dev"
-    key     = "schema_loader/dev/terraform.tfstate"
-    region  = "us-east-1"
-    encrypt = true
-  }
+  backend "s3" {}
 }
 
 provider "aws" {
@@ -19,15 +23,19 @@ provider "aws" {
 }
 
 # ==============================================================================
-# REMOTE STATE — pulls vpc_id, subnet, rds sg from env/dev
+# REMOTE STATE — pulls vpc_id, subnet, rds sg from env/<env>
 # ==============================================================================
 data "terraform_remote_state" "env" {
   backend = "s3"
   config = {
-    bucket = "chonky-tfstate-dev"
-    key    = "env/dev/terraform.tfstate"
-    region = "us-east-1"
+    bucket = "chonky-tfstate-${var.env}"
+    key    = "env/${var.env}/network-rds/terraform.tfstate"
+    region = var.region
   }
+}
+
+data "aws_secretsmanager_secret_version" "db" {
+  secret_id = "${var.name_prefix}/${var.env}/db_pass"
 }
 
 # ==============================================================================
@@ -79,6 +87,20 @@ resource "aws_iam_instance_profile" "ssm" {
   role = aws_iam_role.ssm.name
 }
 
+resource "aws_iam_role_policy" "schema_loader_secrets" {
+  name = "${var.name_prefix}-schema-loader-secrets"
+  role = aws_iam_role.ssm.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.name_prefix}/${var.env}/db_pass*"
+    }]
+  })
+}
+
 # ==============================================================================
 # SECURITY GROUP
 # ==============================================================================
@@ -90,9 +112,10 @@ resource "aws_security_group" "schema_loader" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # lock to your IP if you want
+    cidr_blocks = [var.allowed_ssh_cidr]
   }
 
+  # Allow outbound to RDS
   egress {
     from_port   = 5432
     to_port     = 5432
@@ -100,10 +123,19 @@ resource "aws_security_group" "schema_loader" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow outbound HTTPS for package downloads and AWS API calls
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow outbound HTTP for package downloads
+  egress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -129,11 +161,20 @@ resource "aws_instance" "schema_loader" {
   subnet_id                   = data.terraform_remote_state.env.outputs.subnet_b_id
   vpc_security_group_ids      = [aws_security_group.schema_loader.id]
   associate_public_ip_address = true
-  key_name                    = "chonky" # your .pem
+  key_name                    = var.key_name
 
   user_data = <<-EOF
     #!/bin/bash
-    dnf install -y postgresql15
+    set -euxo pipefail
+
+    # Update the system
+    dnf update -y
+
+    # Install PostgreSQL 15 client
+    dnf install -y postgresql18
+
+    # Verify psql is available (fail fast if not)
+    psql --version
   EOF
 
   tags = {
@@ -153,7 +194,7 @@ resource "time_sleep" "wait_for_ssm" {
 # ==============================================================================
 # RUN SQL via SSM — fires once on apply, torn down with destroy
 # ==============================================================================
-resource "null_resource" "run_schema" {
+resource "null_resource" "upload_sql" {
   depends_on = [time_sleep.wait_for_ssm]
 
   provisioner "file" {
@@ -163,7 +204,7 @@ resource "null_resource" "run_schema" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("${path.module}/chonky.pem")
+      private_key = var.ssh_private_key
       host        = aws_instance.schema_loader.public_ip
     }
   }
@@ -175,23 +216,46 @@ resource "null_resource" "run_schema" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("${path.module}/chonky.pem")
+      private_key = var.ssh_private_key
       host        = aws_instance.schema_loader.public_ip
     }
   }
+}
+
+resource "null_resource" "run_schema" {
+  depends_on = [null_resource.upload_sql]
 
   provisioner "remote-exec" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("${path.module}/chonky.pem")
+      private_key = var.ssh_private_key
       host        = aws_instance.schema_loader.public_ip
     }
 
     inline = [
-      "sudo dnf install -y postgresql15",
-      "PGPASSWORD='${var.db_pass}' psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/01-schema.sql",
-      "PGPASSWORD='${var.db_pass}' psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/02-seed.sql"
+      "cloud-init status --wait",
+      "sudo dnf install -y postgresql18 awscli",
+      "export DB_PASS='${data.aws_secretsmanager_secret_version.db.secret_string}'",
+      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/01-schema.sql"
+    ]
+  }
+}
+
+resource "null_resource" "run_seed" {
+  depends_on = [null_resource.run_schema]
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = var.ssh_private_key
+      host        = aws_instance.schema_loader.public_ip
+    }
+
+    inline = [
+      "export DB_PASS='${data.aws_secretsmanager_secret_version.db.secret_string}'",
+      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/02-seed.sql"
     ]
   }
 }

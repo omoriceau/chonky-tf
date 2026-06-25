@@ -43,13 +43,6 @@ variable "db_name" {
 variable "db_user" {
   description = "Master database username"
   type        = string
-  default     = "chonky"
-  sensitive   = true
-}
-
-variable "db_pass" {
-  description = "Master database password"
-  type        = string
   sensitive   = true
 }
 
@@ -62,7 +55,7 @@ variable "instance_class" {
 variable "engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "15.4"
+  default     = "18.3"
 }
 
 variable "allocated_storage" {
@@ -74,28 +67,17 @@ variable "allocated_storage" {
 variable "backup_retention_period" {
   description = "Backup retention period in days"
   type        = number
-  default     = 7
+  default     = 1
 }
 
-variable "stripe_secret_key" {
-  description = "Stripe secret API key"
+variable "skip_final_snapshot" {
+  description = "Skip final snapshot on destroy"
+  type        = bool
+  default     = true
+}
+
+variable "final_snapshot_identifier" {
+  description = "Final snapshot identifier when skip_final_snapshot is false"
   type        = string
-  sensitive   = true
+  default     = null
 }
-
-variable "event_bus_name" {
-  description = "EventBridge event bus name"
-  type        = string
-  default     = "chonkychonk-bus"
-}
-
-variable "stripe_intent_source_dir" {
-  description = "Path to stripe_intent Lambda source code"
-  type        = string
-}
-
-variable "payments_api_source_dir" {
-  description = "Path to payments_api Lambda source code"
-  type        = string
-}
-
