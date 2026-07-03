@@ -40,16 +40,9 @@ variable "seed_sql_path" {
   default     = "../../sql-data/02-init-data.sql"
 }
 
-# schema_loader/variables.tf
 variable "key_name" {
   description = "EC2 Key Pair name for SSH access to schema loader"
   type        = string
-}
-
-variable "ssh_private_key" {
-  description = "SSH private key contents for schema loader EC2"
-  type        = string
-  sensitive   = true
 }
 
 variable "allowed_ssh_cidr" {

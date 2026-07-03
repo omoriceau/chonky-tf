@@ -13,6 +13,18 @@ provider "aws" {
   region = var.region
 }
 
+# ==============================================================================
+# REMOTE STATE — pull infrastructure from network-rds deployment
+# ==============================================================================
+data "terraform_remote_state" "network_rds" {
+  backend = "s3"
+  config = {
+    bucket = "chonky-tfstate-${var.env}"
+    key    = "env/${var.env}/network-rds/terraform.tfstate"
+    region = var.region
+  }
+}
+
 variable "enable_products_layer" {
   type    = bool
   default = false
@@ -23,14 +35,20 @@ variable "enable_payments_layer" {
   default = false
 }
 
+variable "layer_build_platform" {
+  description = "Docker --platform used to build Lambda layer wheels. Must match the compatible_runtimes/architecture of the Lambda functions consuming the layer (x86_64 -> linux/amd64)."
+  type        = string
+  default     = "linux/amd64"
+}
+
 # ==============================================================================
-# Use variables directly - infrastructure values must be provided
+# Use remote state instead of variables - infrastructure values are fetched automatically
 # ==============================================================================
 locals {
-  vpc_id                = var.vpc_id
-  subnet_ids            = var.subnet_ids
-  rds_security_group_id = var.rds_security_group_id
-  db_endpoint           = var.db_endpoint
+  vpc_id                = data.terraform_remote_state.network_rds.outputs.vpc_id
+  subnet_ids            = data.terraform_remote_state.network_rds.outputs.subnet_ids
+  rds_security_group_id = data.terraform_remote_state.network_rds.outputs.rds_security_group_id
+  db_endpoint           = data.terraform_remote_state.network_rds.outputs.db_address
   cors_allow_origins    = var.cors_allow_origins
 }
 
@@ -113,10 +131,8 @@ resource "aws_iam_role_policy" "api_gateway_lambda" {
 }
 
 # ==============================================================================
-# PRODUCTS API INTEGRATION
+# PRODUCTS API LAMBDA PERMISSION
 # ==============================================================================
-# For HTTP API with Lambda, we need to create the integration with proper credentials
-# The URI format for Lambda in HTTP API is: arn:aws:apigateway:region:lambda:path/2015-03-31/functions/function-arn/invocations
 resource "aws_lambda_permission" "products_api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -126,7 +142,57 @@ resource "aws_lambda_permission" "products_api_gateway" {
 }
 
 # ==============================================================================
+# PRODUCTS API INTEGRATION
+# ==============================================================================
+resource "aws_apigatewayv2_integration" "products" {
+  api_id           = aws_apigatewayv2_api.this.id
+  integration_type = "AWS_PROXY"
+  integration_method = "POST"
+  payload_format_version = "2.0"
+  
+  integration_uri    = module.products.function_arn
+  credentials_arn    = aws_iam_role.api_gateway.arn
+}
+
+resource "aws_apigatewayv2_route" "products" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "ANY /products/{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.products.id}"
+}
+
+resource "aws_apigatewayv2_route" "products_root" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "ANY /products"
+  target    = "integrations/${aws_apigatewayv2_integration.products.id}"
+}
+
+# ==============================================================================
 # PAYMENTS API INTEGRATION
+# ==============================================================================
+resource "aws_apigatewayv2_integration" "payments" {
+  api_id           = aws_apigatewayv2_api.this.id
+  integration_type = "AWS_PROXY"
+  integration_method = "POST"
+  payload_format_version = "2.0"
+  
+  integration_uri    = module.payments_api.function_arn
+  credentials_arn    = aws_iam_role.api_gateway.arn
+}
+
+resource "aws_apigatewayv2_route" "payments" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "ANY /payments/{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.payments.id}"
+}
+
+resource "aws_apigatewayv2_route" "payments_root" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "ANY /payments"
+  target    = "integrations/${aws_apigatewayv2_integration.payments.id}"
+}
+
+# ==============================================================================
+# PAYMENTS API LAMBDA PERMISSION
 # ==============================================================================
 resource "aws_lambda_permission" "payments_api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
@@ -140,9 +206,9 @@ resource "aws_lambda_permission" "payments_api_gateway" {
 # SECURITY GROUP FOR VPC LAMBDAS
 # ==============================================================================
 resource "aws_security_group" "vpc_lambda" {
-  name        = "${var.name_prefix}-vpc-lambda-sg"
-  description = "Security group for Lambdas running in VPC"
-  vpc_id      = local.vpc_id
+  name                   = "${var.name_prefix}-vpc-lambda-sg"
+  description            = "Security group for Lambdas running in VPC"
+  vpc_id                 = local.vpc_id
   revoke_rules_on_delete = true
 
   tags = {
@@ -158,7 +224,7 @@ resource "aws_security_group_rule" "vpc_lambda_egress_https" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  cidr_blocks       = [var.vpc_cidr]
+  cidr_blocks       = ["10.0.0.0/16"]
 }
 
 resource "aws_security_group_rule" "vpc_lambda_egress_postgres" {
@@ -168,7 +234,7 @@ resource "aws_security_group_rule" "vpc_lambda_egress_postgres" {
   from_port         = 5432
   to_port           = 5432
   protocol          = "tcp"
-  cidr_blocks       = [var.vpc_cidr]
+  cidr_blocks       = ["10.0.0.0/16"]
 }
 
 # ==============================================================================
@@ -250,15 +316,15 @@ module "payments_api" {
     security_group_ids = [aws_security_group.vpc_lambda.id]
   }
 
-  layers = var.enable_products_layer ? [
-    aws_lambda_layer_version.products[0].arn
+  layers = var.enable_payments_layer ? [
+    aws_lambda_layer_version.payments[0].arn
   ] : []
 
   environment_variables = {
     STRIPE_INTENT_FUNCTION_ARN = module.stripe_intent.function_arn
     EVENT_BUS_NAME             = var.event_bus_name
-    DB_HOST                    = split(":", local.db_endpoint)[0]
-    DB_PORT                    = split(":", local.db_endpoint)[1]
+    DB_HOST                    = data.terraform_remote_state.network_rds.outputs.db_address
+    DB_PORT                    = data.terraform_remote_state.network_rds.outputs.db_port
     DB_NAME                    = var.db_name
     DB_USER                    = var.db_user
   }
@@ -312,40 +378,93 @@ module "payments_api" {
 
 data "aws_caller_identity" "current" {}
 
-# ==============================================================================
-# PRODUCTS API LAMBDA LAYER (Python dependencies) - Optional
-# ==============================================================================
-data "archive_file" "products_layer" {
-  count       = var.enable_products_layer ? 1 : 0
-  type        = "zip"
-  source_dir  = var.products_layer_source_dir
-  output_path = "${path.module}/.build/products-layer.zip"
-}
-
-resource "aws_lambda_layer_version" "products" {
-  count               = var.enable_products_layer ? 1 : 0
-  filename            = var.enable_products_layer ? data.archive_file.products_layer[0].output_path : null
-  layer_name          = "${var.name_prefix}-products-layer-${var.env}"
-  compatible_runtimes = ["python3.12"]
-  source_code_hash    = var.enable_products_layer ? data.archive_file.products_layer[0].output_base64sha256 : null
-}
 
 # ==============================================================================
 # PAYMENTS API LAMBDA LAYER (Python dependencies - stripe, psycopg2)
 # ==============================================================================
-data "archive_file" "payments_layer" {
-  count       = var.enable_payments_layer ? 1 : 0
-  type        = "zip"
-  source_dir  = var.payments_layer_source_dir
-  output_path = "${path.module}/.build/payments-layer.zip"
+resource "null_resource" "build_payments_layer" {
+  count = var.enable_payments_layer ? 1 : 0
+  
+  triggers = {
+    requirements = filemd5("${var.payments_layer_source_dir}/payments_api/requirements.txt")
+  }
+
+  provisioner "local-exec" {
+    working_dir = path.module
+    command = <<-EOT
+      set -e
+      LAYER_DIR=".build/payments-layer-tmp"
+      OUTPUT_ZIP=".build/payments-layer.zip"
+      BUILD_DIR="$(pwd)"
+      REQ_FILE="$(cd ${var.payments_layer_source_dir}/payments_api && pwd)/requirements.txt"
+      
+      sudo rm -rf "$LAYER_DIR"
+      mkdir -p "$LAYER_DIR/python"
+      
+      # Build in Amazon Linux 2 Docker container to match Lambda environment
+      docker run --rm --user $(id -u):$(id -g) --entrypoint /bin/bash -v "$BUILD_DIR":/work -v "$REQ_FILE":/req.txt public.ecr.aws/lambda/python:3.12 \
+        -c "pip install -q -t /work/$LAYER_DIR/python -r /req.txt --no-cache-dir --break-system-packages 2>&1 | grep -v 'does not take into account' || true"
+      
+      # Create the zip
+      cd "$LAYER_DIR"
+      zip -q -r "../$(basename $OUTPUT_ZIP)" .
+      cd "$BUILD_DIR"
+      sudo rm -rf "$LAYER_DIR"
+    EOT
+  }
 }
 
 resource "aws_lambda_layer_version" "payments" {
   count               = var.enable_payments_layer ? 1 : 0
-  filename            = data.archive_file.payments_layer[0].output_path
+  filename            = "${path.module}/.build/payments-layer.zip"
   layer_name          = "${var.name_prefix}-payments-layer-${var.env}"
   compatible_runtimes = ["python3.12"]
-  source_code_hash    = data.archive_file.payments_layer[0].output_base64sha256
+  
+  depends_on = [null_resource.build_payments_layer]
+}
+
+# ==============================================================================
+# PRODUCTS API LAMBDA LAYER (Python dependencies) - Optional
+# ==============================================================================
+resource "null_resource" "build_products_layer" {
+  count = var.enable_products_layer ? 1 : 0
+  
+  triggers = {
+    requirements = filemd5("${var.products_layer_source_dir}/products/requirements.txt")
+  }
+
+  provisioner "local-exec" {
+    working_dir = path.module
+    command = <<-EOT
+      set -e
+      LAYER_DIR=".build/products-layer-tmp"
+      OUTPUT_ZIP=".build/products-layer.zip"
+      BUILD_DIR="$(pwd)"
+      REQ_FILE="$(cd ${var.products_layer_source_dir}/products && pwd)/requirements.txt"
+      
+      sudo rm -rf "$LAYER_DIR"
+      mkdir -p "$LAYER_DIR/python"
+      
+      # Build in Amazon Linux 2 Docker container to match Lambda environment
+      docker run --rm --user $(id -u):$(id -g) --entrypoint /bin/bash -v "$BUILD_DIR":/work -v "$REQ_FILE":/req.txt public.ecr.aws/lambda/python:3.12 \
+        -c "pip install -q -t /work/$LAYER_DIR/python -r /req.txt --no-cache-dir --break-system-packages 2>&1 | grep -v 'does not take into account' || true"
+      
+      # Create the zip
+      cd "$LAYER_DIR"
+      zip -q -r "../$(basename $OUTPUT_ZIP)" .
+      cd "$BUILD_DIR"
+      sudo rm -rf "$LAYER_DIR"
+    EOT
+  }
+}
+
+resource "aws_lambda_layer_version" "products" {
+  count               = var.enable_products_layer ? 1 : 0
+  filename            = "${path.module}/.build/products-layer.zip"
+  layer_name          = "${var.name_prefix}-products-layer-${var.env}"
+  compatible_runtimes = ["python3.12"]
+  
+  depends_on = [null_resource.build_products_layer]
 }
 
 # ==============================================================================
@@ -377,8 +496,8 @@ module "products" {
 
   environment_variables = {
     EVENT_BUS_NAME = var.event_bus_name
-    DB_HOST        = split(":", local.db_endpoint)[0]
-    DB_PORT        = split(":", local.db_endpoint)[1]
+    DB_HOST        = data.terraform_remote_state.network_rds.outputs.db_address
+    DB_PORT        = data.terraform_remote_state.network_rds.outputs.db_port
     DB_NAME        = var.db_name
     DB_USER        = var.db_user
   }

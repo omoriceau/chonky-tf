@@ -4,6 +4,7 @@ terraform.tfstate
 terraform.tfstate.backup
 terraform.tfvars
 *.tfvars
+*.tfvars.local
 !*.tfvars.example
 .env
 *.pem

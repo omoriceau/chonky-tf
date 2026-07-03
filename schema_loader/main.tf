@@ -38,6 +38,10 @@ data "aws_secretsmanager_secret_version" "db" {
   secret_id = "${var.name_prefix}/${var.env}/db_pass"
 }
 
+data "aws_secretsmanager_secret_version" "ssh_private_key" {
+  secret_id = "${var.name_prefix}/${var.env}/ssh_private_key"
+}
+
 # ==============================================================================
 # DATA
 # ==============================================================================
@@ -161,7 +165,7 @@ resource "aws_instance" "schema_loader" {
   subnet_id                   = data.terraform_remote_state.env.outputs.subnet_b_id
   vpc_security_group_ids      = [aws_security_group.schema_loader.id]
   associate_public_ip_address = true
-  key_name                    = var.key_name
+  key_name                    = var.name_prefix
 
   user_data = <<-EOF
     #!/bin/bash
@@ -204,7 +208,7 @@ resource "null_resource" "upload_sql" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = var.ssh_private_key
+      private_key = data.aws_secretsmanager_secret_version.ssh_private_key.secret_string
       host        = aws_instance.schema_loader.public_ip
     }
   }
@@ -216,7 +220,7 @@ resource "null_resource" "upload_sql" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = var.ssh_private_key
+      private_key = data.aws_secretsmanager_secret_version.ssh_private_key.secret_string
       host        = aws_instance.schema_loader.public_ip
     }
   }
@@ -229,15 +233,15 @@ resource "null_resource" "run_schema" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = var.ssh_private_key
+      private_key = data.aws_secretsmanager_secret_version.ssh_private_key.secret_string
       host        = aws_instance.schema_loader.public_ip
     }
 
     inline = [
       "cloud-init status --wait",
-      "sudo dnf install -y postgresql18 awscli",
+      "sudo dnf install -y postgresql15",
       "export DB_PASS='${data.aws_secretsmanager_secret_version.db.secret_string}'",
-      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/01-schema.sql"
+      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/01-schema.sql || exit 1"
     ]
   }
 }
@@ -249,13 +253,13 @@ resource "null_resource" "run_seed" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = var.ssh_private_key
+      private_key = data.aws_secretsmanager_secret_version.ssh_private_key.secret_string
       host        = aws_instance.schema_loader.public_ip
     }
 
     inline = [
       "export DB_PASS='${data.aws_secretsmanager_secret_version.db.secret_string}'",
-      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/02-seed.sql"
+      "PGPASSWORD=$DB_PASS psql -h ${data.terraform_remote_state.env.outputs.db_address} -U ${var.db_user} -d ${var.db_name} -f /tmp/02-seed.sql || exit 1"
     ]
   }
 }

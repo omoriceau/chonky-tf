@@ -75,7 +75,6 @@ resource "aws_route_table_association" "b" {
 # VPC ENDPOINT SECURITY GROUP
 # ==============================================================================
 resource "aws_security_group" "vpc_endpoints" {
-  name                   = "${var.name_prefix}-vpc-endpoints-sg"
   description            = "Security group for VPC endpoints (Lambda, Secrets Manager, Events)"
   vpc_id                 = aws_vpc.this.id
   revoke_rules_on_delete = true
@@ -128,7 +127,7 @@ resource "aws_vpc_endpoint" "lambda" {
 # Secrets Manager endpoint
 resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id              = aws_vpc.this.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.secretsmanager"
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 
@@ -144,7 +143,7 @@ resource "aws_vpc_endpoint" "secretsmanager" {
 # EventBridge (Events) endpoint
 resource "aws_vpc_endpoint" "events" {
   vpc_id              = aws_vpc.this.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.events"
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.events"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 
@@ -160,7 +159,7 @@ resource "aws_vpc_endpoint" "events" {
 # STS endpoint
 resource "aws_vpc_endpoint" "sts" {
   vpc_id              = aws_vpc.this.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.sts"
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.sts"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 

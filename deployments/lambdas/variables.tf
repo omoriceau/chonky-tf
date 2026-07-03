@@ -13,32 +13,6 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR block"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID for Lambda security groups"
-  type        = string
-}
-
-variable "subnet_ids" {
-  description = "List of subnet IDs for Lambda deployment"
-  type        = list(string)
-}
-
-variable "rds_security_group_id" {
-  description = "Security group ID of the RDS instance"
-  type        = string
-}
-
-variable "db_endpoint" {
-  description = "RDS database endpoint"
-  type        = string
-  sensitive   = true
-}
-
 variable "db_name" {
   description = "Database name"
   type        = string
