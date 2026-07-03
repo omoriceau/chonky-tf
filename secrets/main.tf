@@ -32,3 +32,13 @@ resource "aws_secretsmanager_secret_version" "stripe_key" {
   secret_id     = aws_secretsmanager_secret.stripe_key.id
   secret_string = var.stripe_secret_key
 }
+
+resource "aws_secretsmanager_secret" "ssh_private_key" {
+  name        = "${var.name_prefix}/${var.env}/ssh_private_key"
+  description = "SSH private key for schema loader EC2"
+}
+
+resource "aws_secretsmanager_secret_version" "ssh_private_key" {
+  secret_id     = aws_secretsmanager_secret.ssh_private_key.id
+  secret_string = var.ssh_private_key
+}
