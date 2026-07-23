@@ -37,13 +37,13 @@ module "rds" {
   vpc_id     = module.network.vpc_id
   subnet_ids = module.network.subnet_ids
 
-  db_name                 = var.db_name
-  db_user                 = var.db_user
-  db_pass                 = data.aws_secretsmanager_secret_version.db_pass.secret_string
-  instance_class          = var.instance_class
-  engine_version          = var.engine_version
-  allocated_storage       = var.allocated_storage
-  backup_retention_period = var.backup_retention_period
-  skip_final_snapshot     = var.skip_final_snapshot
+  db_name                   = var.db_name
+  db_user                   = var.db_user
+  db_pass                   = data.aws_secretsmanager_secret_version.db_pass.secret_string
+  instance_class            = var.instance_class
+  engine_version            = var.engine_version
+  allocated_storage         = var.allocated_storage
+  backup_retention_period   = var.backup_retention_period
+  skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.final_snapshot_identifier
 }
