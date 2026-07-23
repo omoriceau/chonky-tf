@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
 # ==============================================================================
 # DATA ARCHIVE FOR LAMBDA CODE
 # ==============================================================================
@@ -5,6 +14,7 @@ data "archive_file" "lambda" {
   type        = "zip"
   source_dir  = var.source_dir
   output_path = "${path.module}/.terraform/${var.function_name}.zip"
+  excludes    = var.excludes
 }
 
 # ==============================================================================
@@ -41,15 +51,6 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 }
 
 # ==============================================================================
-# VPC EXECUTION POLICY (if VPC config provided)
-# ==============================================================================
-resource "aws_iam_role_policy_attachment" "lambda_vpc_execution" {
-  count      = var.vpc_config != null ? 1 : 0
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-}
-
-# ==============================================================================
 # ADDITIONAL POLICY STATEMENTS
 # ==============================================================================
 resource "aws_iam_role_policy" "lambda_custom_policy" {
@@ -67,27 +68,19 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
 # LAMBDA FUNCTION
 # ==============================================================================
 resource "aws_lambda_function" "this" {
-  filename            = data.archive_file.lambda.output_path
-  function_name       = "${var.name_prefix}-${var.function_name}-${var.env}"
-  role                = aws_iam_role.lambda_role.arn
-  handler             = var.handler
-  source_code_hash    = data.archive_file.lambda.output_base64sha256
-  timeout             = var.timeout
-  memory_size         = var.memory_size
-  runtime             = var.runtime
-  layers              = var.layers
+  filename                       = data.archive_file.lambda.output_path
+  function_name                  = "${var.name_prefix}-${var.function_name}-${var.env}"
+  role                           = aws_iam_role.lambda_role.arn
+  handler                        = var.handler
+  source_code_hash               = data.archive_file.lambda.output_base64sha256
+  timeout                        = var.timeout
+  memory_size                    = var.memory_size
+  runtime                        = var.runtime
+  layers                         = var.layers
   reserved_concurrent_executions = var.reserved_concurrent_executions
 
   environment {
     variables = var.environment_variables
-  }
-
-  dynamic "vpc_config" {
-    for_each = var.vpc_config != null ? [var.vpc_config] : []
-    content {
-      subnet_ids         = vpc_config.value.subnet_ids
-      security_group_ids = vpc_config.value.security_group_ids
-    }
   }
 
   tags = {
@@ -97,11 +90,6 @@ resource "aws_lambda_function" "this" {
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_basic_execution,
-    aws_iam_role_policy_attachment.lambda_vpc_execution
   ]
 }
 
-# ==============================================================================
-# LAMBDA PERMISSION FOR INVOKE (optional, added via separate resource if needed)
-# ==============================================================================
-# This would be created when another Lambda or service needs to invoke this one

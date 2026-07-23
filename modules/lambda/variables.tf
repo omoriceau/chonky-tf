@@ -26,7 +26,7 @@ variable "handler" {
 variable "runtime" {
   description = "Lambda runtime"
   type        = string
-  default     = "python3.12"
+  default     = "python3.13"
 }
 
 variable "timeout" {
@@ -47,18 +47,15 @@ variable "environment_variables" {
   default     = {}
 }
 
-variable "vpc_config" {
-  description = "VPC configuration (optional)"
-  type = object({
-    subnet_ids         = list(string)
-    security_group_ids = list(string)
-  })
-  default = null
-}
-
 variable "source_dir" {
   description = "Path to Lambda source code directory"
   type        = string
+}
+
+variable "excludes" {
+  description = "Relative paths within source_dir to exclude from the deployment zip (e.g. tests, __pycache__)"
+  type        = list(string)
+  default     = []
 }
 
 variable "layers" {

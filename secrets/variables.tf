@@ -7,12 +7,12 @@ variable "stripe_secret_key" {
   sensitive = true
 }
 
-#variable "db_pass" {
-#  type      = string
-#  sensitive = true
-#}
+variable "stripe_webhook_secret" {
+  type      = string
+  sensitive = true
+}
 
-#variable "ssh_private_key" {
-#  type      = string
-#  sensitive = true
-#}
+variable "stripe_publish_key" {
+  type      = string
+  sensitive = false
+}
