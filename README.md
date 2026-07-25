@@ -7,41 +7,47 @@ Terraform infrastructure for the Chonky stack.
 ```
 chonky-infra/
 ├── bootstrap/                    # One-time setup: S3 state bucket, DynamoDB lock table
-├── secrets/                      # Secrets Manager secrets (RDS password, etc.)
+├── secrets/                      # Secrets Manager secrets (Stripe key, etc.)
 ├── deployments/
-│   ├── network-rds/             # VPC, subnets, RDS (depends on secrets)
-│   │   ├── backends/
-│   │   ├── dev.tfvars
-│   │   └── main.tf
-│   └── lambdas/                 # Lambda functions (separate state)
+│   ├── dynamodb/                # DynamoDB tables (users/products/orders/payments/promotions)
+│   ├── cognito/                 # Cognito user pools (customers + admins)
+│   ├── admin-hosting/           # Admin SPA hosting (S3 + CloudFront, Cloudflare DNS)
+│   ├── ses/                     # SES domain identity, DKIM, bounce/complaint tracking
+│   └── lambdas/                 # chonky-cat-be backend: Lambdas, EventBridge, REST API
 │       ├── backends/
 │       ├── dev.tfvars
 │       └── main.tf
-├── schema_loader/               # Database schema and seed data
+├── dynamodb_loader/              # Seeds the DynamoDB tables with dev/test data
+├── dev_image_loader/             # Seeds an S3 bucket with placeholder product images
 └── modules/
-    ├── network/                 # VPC + subnets
-    ├── rds/                     # RDS instance
-    └── lambda/                  # Lambda function module
+    ├── s3/                       # S3 bucket module
+    ├── cognito/                  # Cognito user pool + app client module
+    ├── ses/                      # SES domain identity + DKIM + SNS bounce/complaint module
+    ├── spa-hosting/              # S3 + CloudFront SPA hosting module
+    └── lambda/                   # Lambda function module
 ```
+
+Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`, `main.tf`) even where not shown above.
 
 ## Deployment Order
 
 1. **bootstrap/** — Creates S3 state bucket and DynamoDB lock table (one-time setup)
-2. **secrets/** — Stores RDS password in Secrets Manager (required before network-rds)
-3. **deployments/network-rds/** — Creates VPC, subnets, and RDS instance
-4. **schema_loader/** — Loads database schema and seed data
-5. **deployments/lambdas/** — Creates Lambda functions
+2. **secrets/** — Stores the Stripe secret key in Secrets Manager
+3. **deployments/dynamodb/** — Creates the DynamoDB tables (users, products, orders, payments, promotions)
+4. **deployments/cognito/** — Creates the Cognito user pools (customers, admins)
+5. **deployments/ses/** — Verifies the SES sending domain (DKIM, bounce/complaint tracking via SNS)
+6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets)
+7. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
+8. **dev_image_loader/** — Seeds a public S3 bucket with placeholder product images (optional, dev convenience)
 
 ## Secrets Management
 
-Sensitive values (SSH keys, database passwords, API keys) should never be committed to version control. Use environment variables instead:
+Sensitive values (API keys, etc.) should never be committed to version control. Use environment variables instead:
 
 ### Setup
 
 1. Set environment variables before deploying:
    ```bash
-   export TF_VAR_ssh_private_key="$(cat chonky.pem)"
-   export TF_VAR_db_pass="your-secure-password"
    export TF_VAR_stripe_secret_key="your-stripe-key"
    ```
 
@@ -56,8 +62,6 @@ Sensitive values (SSH keys, database passwords, API keys) should never be commit
 Create `secrets/deploy.sh` (git-ignored):
 ```bash
 #!/bin/bash
-export TF_VAR_ssh_private_key="$(cat ../chonky.pem)"
-export TF_VAR_db_pass="your-secure-password"
 export TF_VAR_stripe_secret_key="your-stripe-key"
 terraform apply -var-file="dev.tfvars"
 ```
@@ -70,7 +74,7 @@ chmod +x secrets/deploy.sh
 
 ### Why environment variables?
 
-- ✅ SSH keys and passwords never in files or version control
+- ✅ Secrets never in files or version control
 - ✅ Standard practice for secrets in CI/CD pipelines
 - ✅ Works seamlessly with Terraform and shell automation
 - ✅ No local tfvars files to accidentally commit
@@ -88,26 +92,29 @@ terraform init
 terraform apply
 
 # 2. Secrets (set environment variables first)
-export TF_VAR_ssh_private_key="$(cat chonky.pem)"
-export TF_VAR_db_pass="your-secure-password"
 export TF_VAR_stripe_secret_key="your-stripe-key"
 
 cd secrets
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 
-# 3. Network and RDS
-cd ../deployments/network-rds
+# 3. DynamoDB tables
+cd ../deployments/dynamodb
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 
-# 4. Database schema
-cd ../../schema_loader
-terraform init
+# 4. Cognito user pools
+cd ../cognito
+terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 
-# 5. Lambda functions
-cd ../deployments/lambdas
+# 5. SES domain identity (DKIM, bounce/complaint tracking)
+cd ../ses
+terraform init -backend-config=backends/dev.hcl
+terraform apply -var-file="dev.tfvars"
+
+# 6. Backend Lambda functions (chonky-cat-be), EventBridge, REST API
+cd ../lambdas
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 ```
