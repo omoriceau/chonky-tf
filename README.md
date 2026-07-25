@@ -49,6 +49,7 @@ Sensitive values (API keys, etc.) should never be committed to version control. 
 1. Set environment variables before deploying:
    ```bash
    export TF_VAR_stripe_secret_key="your-stripe-key"
+   eval "$(./secrets/create-stripe-webhook.sh)"  # sets TF_VAR_stripe_webhook_secret
    ```
 
 2. Deploy secrets:
@@ -63,6 +64,7 @@ Create `secrets/deploy.sh` (git-ignored):
 ```bash
 #!/bin/bash
 export TF_VAR_stripe_secret_key="your-stripe-key"
+eval "$(./create-stripe-webhook.sh)"
 terraform apply -var-file="dev.tfvars"
 ```
 
@@ -71,13 +73,6 @@ Then:
 chmod +x secrets/deploy.sh
 ./secrets/deploy.sh
 ```
-
-### Why environment variables?
-
-- ✅ Secrets never in files or version control
-- ✅ Standard practice for secrets in CI/CD pipelines
-- ✅ Works seamlessly with Terraform and shell automation
-- ✅ No local tfvars files to accidentally commit
 
 ### For production
 
@@ -93,6 +88,7 @@ terraform apply
 
 # 2. Secrets (set environment variables first)
 export TF_VAR_stripe_secret_key="your-stripe-key"
+eval "$(./secrets/create-stripe-webhook.sh)"  # sets TF_VAR_stripe_webhook_secret
 
 cd secrets
 terraform init -backend-config=backends/dev.hcl

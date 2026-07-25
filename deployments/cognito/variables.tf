@@ -49,3 +49,16 @@ variable "admin_emails" {
   type        = list(string)
   default     = []
 }
+
+variable "default_admin_email" {
+  description = "Email/username for a default admin login seeded with a fixed permanent password (default_admin_password) instead of an emailed temporary one. Leave empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "default_admin_password" {
+  description = "Permanent password for default_admin_email. Must satisfy the admins pool's password policy (min length, upper/lower/number)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

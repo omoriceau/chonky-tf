@@ -76,3 +76,25 @@ resource "aws_cognito_user" "admin" {
 
   desired_delivery_mediums = ["EMAIL"]
 }
+
+# ==============================================================================
+# Default admin login — fixed permanent password instead of an emailed
+# temporary one, for dev convenience (no mailbox needed to get in). Setting
+# `password` directly makes the account immediately usable with
+# ALLOW_USER_SRP_AUTH; message_action = SUPPRESS skips Cognito's invite
+# email, which would otherwise go out even though a real password is set.
+# ==============================================================================
+resource "aws_cognito_user" "default_admin" {
+  count = var.default_admin_email != "" ? 1 : 0
+
+  user_pool_id = module.admins.user_pool_id
+  username     = var.default_admin_email
+
+  attributes = {
+    email          = var.default_admin_email
+    email_verified = true
+  }
+
+  password       = var.default_admin_password
+  message_action = "SUPPRESS"
+}

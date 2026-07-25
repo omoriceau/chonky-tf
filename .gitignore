@@ -10,3 +10,8 @@ terraform.tfvars
 *.pem
 !.env.example
 crash.log
+
+# Automated deploy checkouts (modules/git_deploy) — reset --hard on every
+# apply, never a developer's own working clone.
+.be-checkout/
+.be-checkout.commit
