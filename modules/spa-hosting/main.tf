@@ -4,6 +4,9 @@ locals {
 
 # Private bucket — no static website hosting, no public ACLs. Every read
 # goes through CloudFront via the Origin Access Control below.
+# AWS-managed SSE-S3 accepted here — no ongoing KMS cost/rotation for a
+# bucket holding a public SPA build.
+#trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "this" {
   bucket = local.bucket_name
 
@@ -36,6 +39,8 @@ resource "aws_cloudfront_origin_access_control" "this" {
   signing_protocol                  = "sigv4"
 }
 
+# No WAF budget for a low-traffic admin SPA CDN right now — accepted risk.
+#trivy:ignore:AVD-AWS-0011
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   default_root_object = "index.html"

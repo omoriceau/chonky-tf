@@ -5,15 +5,15 @@ tracking via SNS) so `chonky-cat-be`'s `email_service` Lambda can send order
 confirmation, order-failure, and welcome/newsletter emails. DNS records are
 created automatically via the Cloudflare provider — no manual DNS work needed.
 
-## Why dev and prod verify different domains
+## Why dev and production verify different domains
 
 SES domain identities and an AWS account's sandbox status are scoped to the
-**account + region**, not to a Terraform stack. To keep dev and prod fully
-independent (and avoid two Terraform states fighting over one shared AWS
-resource), each env verifies its own domain:
+**account + region**, not to a Terraform stack. To keep dev and production
+fully independent (and avoid two Terraform states fighting over one shared
+AWS resource), each env verifies its own domain:
 
 - **dev** → `dev.chonkycat.ca`
-- **prod** → `chonkycat.ca`
+- **production** → `chonkycat.ca`
 
 Both live in the same Cloudflare zone (`chonkycat.ca`), so `cloudflare_zone_id`
 is the same for both — only `domain_name` differs.
@@ -27,7 +27,7 @@ is the same for both — only `domain_name` differs.
    ```
 
 2. Update `sandbox_test_recipients` in `dev.tfvars` (and optionally
-   `prod.tfvars`) with an inbox you can actually check. SES sandbox mode only
+   `production.tfvars`) with an inbox you can actually check. SES sandbox mode only
    delivers to verified recipients — this should match `DEV_EMAIL` /
    `deployments/lambdas`' `dev_email` var.
 
@@ -40,7 +40,7 @@ is the same for both — only `domain_name` differs.
 
    `apply` will hang for a few minutes on `aws_ses_domain_identity_verification`
    while it polls for AWS to see the Cloudflare TXT record — that's expected,
-   not a hang. Repeat with `backends/prod.hcl` / `prod.tfvars` for prod.
+   not a hang. Repeat with `backends/production.hcl` / `production.tfvars` for production.
 
 4. Deploy `deployments/lambdas` after this — it reads `EMAIL_FROM_ADDRESS`,
    `SUPPORT_EMAIL`, and `SES_CONFIGURATION_SET` from this stack's outputs via

@@ -27,7 +27,7 @@ variable "point_in_time_recovery_enabled" {
 }
 
 variable "deletion_protection_enabled" {
-  description = "Enable deletion protection on all tables — set true for prod"
+  description = "Enable deletion protection on all tables — set true for production"
   type        = bool
   default     = false
 }

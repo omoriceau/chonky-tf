@@ -38,7 +38,7 @@ Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`
 5. **deployments/ses/** — Verifies the SES sending domain (DKIM, bounce/complaint tracking via SNS)
 6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets)
 7. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
-8. **dev_image_loader/** — Seeds a public S3 bucket with placeholder product images (optional, dev convenience)
+8. **dev_image_loader/** — Provisions an S3 bucket + CloudFront (OAC) + Cloudflare DNS, then seeds it with placeholder product images (optional, dev convenience). Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
 
 ## Secrets Management
 
@@ -86,6 +86,10 @@ cd bootstrap
 terraform init
 terraform apply
 
+# production, in its own workspace so its state never collides with dev's
+terraform workspace new production # not required if there is only one env
+terraform apply -var="env=production"
+
 # 2. Secrets (set environment variables first)
 export TF_VAR_stripe_secret_key="your-stripe-key"
 eval "$(./secrets/create-stripe-webhook.sh)"  # sets TF_VAR_stripe_webhook_secret
@@ -104,13 +108,25 @@ cd ../cognito
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 
-# 5. SES domain identity (DKIM, bounce/complaint tracking)
+# 5. SES domain identity (DKIM, bounce/complaint tracking) — this and
+#    everything below touches Cloudflare DNS (SES validation records,
+#    lambdas' optional custom domain, the image CDN's domain), so set these
+#    once and they're reused for the rest of Quick Start:
+export TF_VAR_cloudflare_api_token="your-cloudflare-api-token"   # Zone.DNS edit permission
+export TF_VAR_cloudflare_zone_id="your-cloudflare-zone-id"       # chonkycat.ca zone, from its Overview page
+
 cd ../ses
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 
 # 6. Backend Lambda functions (chonky-cat-be), EventBridge, REST API
 cd ../lambdas
+terraform init -backend-config=backends/dev.hcl
+terraform apply -var-file="dev.tfvars"
+
+# 7. Product images (dev convenience) — S3 + CloudFront + Cloudflare DNS,
+#    reuses the Cloudflare credentials exported in step 5
+cd ../../dev_image_loader
 terraform init -backend-config=backends/dev.hcl
 terraform apply -var-file="dev.tfvars"
 ```

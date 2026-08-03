@@ -4,7 +4,7 @@ variable "name_prefix" {
 }
 
 variable "env" {
-  description = "Environment name (dev, prod)"
+  description = "Environment name (dev, production)"
   type        = string
 }
 

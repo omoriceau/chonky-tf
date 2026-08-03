@@ -22,9 +22,10 @@ provider "cloudflare" {
 }
 
 # ==============================================================================
-# SES DOMAIN IDENTITY — verifies var.domain_name for sending. dev and prod
-# verify different domains (dev.chonkycat.ca vs chonkycat.ca), same pattern as
-# deployments/custom-domain (api2.chonkycat.ca dev vs api.chonkycat.ca prod),
+# SES DOMAIN IDENTITY — verifies var.domain_name for sending. dev and
+# production verify different domains (dev.chonkycat.ca vs chonkycat.ca),
+# same pattern as deployments/custom-domain (api2.chonkycat.ca dev vs
+# api.chonkycat.ca production),
 # so the two envs never fight over one shared AWS-account-scoped SES identity.
 # ==============================================================================
 module "ses" {

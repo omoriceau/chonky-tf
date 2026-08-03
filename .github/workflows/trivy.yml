@@ -19,7 +19,7 @@ jobs:
       # --- Infrastructure-as-code scan: Terraform under modules/, deployments/, bootstrap/ ---
       - name: Trivy IaC scan (Terraform)
         id: trivy-config
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -30,7 +30,7 @@ jobs:
 
       - name: Trivy IaC scan (SARIF report, archived)
         if: always()
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -42,7 +42,7 @@ jobs:
       # --- Dependency scan: requirements.txt used by dynamodb_loader, dev_image_loader, etc. ---
       - name: Trivy dependency scan
         id: trivy-fs
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -53,7 +53,7 @@ jobs:
 
       - name: Trivy dependency scan (SARIF report, archived)
         if: always()
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

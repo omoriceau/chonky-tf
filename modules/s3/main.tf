@@ -16,6 +16,9 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
+# AWS-managed SSE-S3 accepted here — no ongoing KMS cost/rotation for
+# buckets this module provisions (product images, etc.).
+#trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
