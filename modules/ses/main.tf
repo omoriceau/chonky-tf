@@ -79,14 +79,22 @@ resource "cloudflare_record" "mail_from_spf" {
 # SES's event publishing, so bounces/complaints are observable instead of
 # silently eroding sender reputation (matters most for the newsletter).
 # ==============================================================================
+# AWS-managed KMS key (alias/aws/sns) accepted here — no ongoing
+# customer-managed-key cost/rotation for bounce/complaint notification topics.
+#trivy:ignore:AVD-AWS-0136
 resource "aws_sns_topic" "bounces" {
-  count = var.enable_bounce_complaint_tracking ? 1 : 0
-  name  = "${var.name_prefix}-ses-bounces-${var.env}"
+  count             = var.enable_bounce_complaint_tracking ? 1 : 0
+  name              = "${var.name_prefix}-ses-bounces-${var.env}"
+  kms_master_key_id = "alias/aws/sns"
 }
 
+# AWS-managed KMS key (alias/aws/sns) accepted here — no ongoing
+# customer-managed-key cost/rotation for bounce/complaint notification topics.
+#trivy:ignore:AVD-AWS-0136
 resource "aws_sns_topic" "complaints" {
-  count = var.enable_bounce_complaint_tracking ? 1 : 0
-  name  = "${var.name_prefix}-ses-complaints-${var.env}"
+  count             = var.enable_bounce_complaint_tracking ? 1 : 0
+  name              = "${var.name_prefix}-ses-complaints-${var.env}"
+  kms_master_key_id = "alias/aws/sns"
 }
 
 data "aws_iam_policy_document" "sns_publish_from_ses" {

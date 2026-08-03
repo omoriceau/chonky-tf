@@ -25,10 +25,10 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-# prod gets the bare domain; every other env gets an <env>- prefix, same
-# convention as deployments/lambdas' api_domain_name.
+# production gets the bare domain; every other env gets an <env>- prefix,
+# same convention as deployments/lambdas' api_domain_name.
 locals {
-  img_domain_name = var.env == "prod" ? "img.chonkycat.ca" : "${var.env}-img.chonkycat.ca"
+  img_domain_name = var.env == "production" ? "img.chonkycat.ca" : "${var.env}-img.chonkycat.ca"
 }
 
 # CloudFront requires the certificate in us-east-1 regardless of the
@@ -98,6 +98,8 @@ resource "aws_cloudfront_origin_access_control" "img" {
   signing_protocol                  = "sigv4"
 }
 
+# No WAF budget for a low-traffic product-image CDN right now — accepted risk.
+#trivy:ignore:AVD-AWS-0011
 resource "aws_cloudfront_distribution" "img" {
   enabled     = true
   aliases     = [local.img_domain_name]

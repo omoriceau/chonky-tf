@@ -30,6 +30,9 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+# AWS-managed SSE-S3 accepted here — no ongoing KMS cost/rotation for a
+# Terraform state bucket already locked down via IAM and bucket policy.
+#trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
 

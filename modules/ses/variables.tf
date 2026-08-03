@@ -14,7 +14,7 @@ variable "region" {
 }
 
 variable "domain_name" {
-  description = "Domain to verify as an SES identity (e.g. chonkycat.ca for prod, dev.chonkycat.ca for dev)"
+  description = "Domain to verify as an SES identity (e.g. chonkycat.ca for production, dev.chonkycat.ca for dev)"
   type        = string
 }
 

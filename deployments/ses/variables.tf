@@ -5,7 +5,7 @@ variable "region" {
 }
 
 variable "env" {
-  description = "Environment name (dev, prod, etc.)"
+  description = "Environment name (dev, production, etc.)"
   type        = string
   default     = "dev"
 }
@@ -17,7 +17,7 @@ variable "name_prefix" {
 }
 
 variable "domain_name" {
-  description = "Domain to verify as an SES identity (e.g. chonkycat.ca for prod, dev.chonkycat.ca for dev)"
+  description = "Domain to verify as an SES identity (e.g. chonkycat.ca for production, dev.chonkycat.ca for dev)"
   type        = string
 }
 
