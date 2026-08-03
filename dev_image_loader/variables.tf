@@ -25,3 +25,14 @@ variable "base_imgs_dir" {
   type        = string
   default     = "base_imgs"
 }
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with Zone.DNS edit permission for the relevant zone"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare Zone ID for chonkycat.ca (found on the zone's Overview page in the Cloudflare dashboard)"
+  type        = string
+}
