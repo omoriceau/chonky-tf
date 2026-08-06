@@ -9,6 +9,12 @@ variable "env" {
   type        = string
 }
 
+variable "state_env" {
+  description = "Env suffix for the tfstate bucket name (chonky-tfstate-<state_env>). Defaults to matching `env`, but can diverge — e.g. production uses bucket \"chonky-tfstate-prod\" since \"chonky-tfstate-production\" is a globally squatted name owned by another AWS account."
+  type        = string
+  default     = "dev"
+}
+
 variable "name_prefix" {
   description = "Prefix for resource names"
   type        = string

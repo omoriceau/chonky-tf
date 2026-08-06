@@ -81,3 +81,9 @@ variable "cloudflare_zone_id" {
   type        = string
   default     = ""
 }
+
+variable "amplify_app_name" {
+  description = "chonky-cat-fe's Amplify app *name* (not id — the id changes if the app is ever torn down and recreated, which is why this module looks it up dynamically via data.external.amplify_app rather than taking the id directly)."
+  type        = string
+  default     = "chonkycat-fe"
+}

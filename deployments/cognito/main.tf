@@ -13,20 +13,17 @@ provider "aws" {
   region = var.region
 }
 
-# ==============================================================================
-# CUSTOMERS POOL — storefront (chonky-cat-fe) signup/login. Wired into the
-# backend's Users lambda today (deployments/lambdas).
-# ==============================================================================
-module "customers" {
-  source = "../../modules/cognito"
+# Only referenced by the Hosted UI domain prefix default below.
+data "aws_caller_identity" "current" {}
 
-  name_prefix = var.name_prefix
-  env         = var.env
-  pool_name   = "customers"
-
-  callback_urls = var.customers_callback_urls
-  logout_urls   = var.customers_logout_urls
-}
+# ==============================================================================
+# No customers pool here — the storefront (chonky-cat-fe) owns its own
+# customer-facing Cognito pool via its Amplify Gen2 backend
+# (amplify/auth/resource.ts), not this module. This module only provisions
+# the admins pool below; chonky-cat-be's CustomerCognitoUserPoolId /
+# CustomerCognitoAppClientId (samconfig.toml) point directly at the
+# Amplify-managed pool's id/client, not at anything from here.
+# ==============================================================================
 
 # ==============================================================================
 # ADMINS POOL — chonky-cat-admin logs in from a different domain than the
@@ -52,7 +49,17 @@ module "admins" {
 }
 
 locals {
-  admins_hosted_ui_domain_prefix = coalesce(var.admins_hosted_ui_domain_prefix, "${var.name_prefix}-admin-${var.env}")
+  # Hosted UI domain prefixes are globally unique across ALL AWS accounts in
+  # a region (like S3 bucket names) — "chonky-admin-production" and a
+  # follow-up disambiguator both turned out to already be squatted by other
+  # AWS accounts (2026-08-05). Account-id-suffixed by default so a new
+  # environment never has to discover that the hard way; set
+  # admins_hosted_ui_domain_prefix explicitly (as production.tfvars does,
+  # pinned once chosen — see its own comment on why) to override.
+  admins_hosted_ui_domain_prefix = coalesce(
+    var.admins_hosted_ui_domain_prefix,
+    "${var.name_prefix}-admin-${var.env}-${data.aws_caller_identity.current.account_id}"
+  )
 }
 
 # ==============================================================================

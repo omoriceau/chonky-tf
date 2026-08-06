@@ -2,6 +2,83 @@
 
 Terraform infrastructure for the Chonky stack.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients["Clients & Entry Point"]
+        Cust["Customer (Browser)"]
+        Admin["Admin (Browser)"]
+        DNS["Cloudflare DNS — chonkycat.ca"]
+
+        Cust --> DNS
+        Admin --> DNS
+    end
+
+    subgraph Frontend["Frontend & Authentication"]
+        Amplify["AWS Amplify Hosting — Storefront SPA"]
+        S3CF["S3 + CloudFront — Admin SPA"]
+        CogCust["Cognito — Customer Pool"]
+        CogAdmin["Cognito — Admin Pool (MFA)"]
+
+        DNS --> Amplify
+        DNS --> S3CF
+        Amplify --> CogCust
+        S3CF --> CogAdmin
+    end
+
+    subgraph API["API & Business Logic"]
+        APIGW["API Gateway (REST) — Cognito Authorizers"]
+        Lambda["AWS Lambda (SAM)<br>Products • Orders • Users • Payments API • Stripe Intent/Webhook • Email Service"]
+
+        CogCust --> APIGW
+        CogAdmin --> APIGW
+        APIGW --> Lambda
+    end
+
+    subgraph Storage["Data & Event Layer"]
+        DDB[("DynamoDB<br>5 tables • Point-in-Time Recovery")]
+        EB["EventBridge<br>event bus"]
+        SecMgr["Secrets Manager<br>Stripe keys"]
+
+        Lambda --> DDB
+        Lambda --> EB
+        Lambda --> SecMgr
+    end
+
+    subgraph External["External Services"]
+        Stripe["Stripe — payments & webhooks"]
+        SES["Amazon SES — transactional email"]
+
+        Lambda <--> Stripe
+        Lambda --> SES
+    end
+
+    subgraph CICD["CI/CD Pipeline"]
+        GHA["GitHub Actions (OIDC) ➔ Trivy + SonarQube ➔ Deploy"]
+    end
+```
+
+### Component Breakdown
+
+**Frontend & Authentication**
+- Customer Access: AWS Amplify Hosting (Storefront SPA) integrated with a dedicated Cognito Customer Pool.
+- Admin Access: S3 + CloudFront distribution (Admin SPA) protected by a separate Cognito Admin Pool with Multi-Factor Authentication (MFA).
+- DNS: Managed via Cloudflare DNS for `chonkycat.ca`.
+
+**Backend & API Layer**
+- API Gateway (REST): Enforces route authorization using Cognito Authorizers.
+- AWS Lambda (SAM): Serverless compute engine hosting endpoints for Products, Orders, Users, Payments, Stripe Intent/Webhooks, and Email Services.
+
+**Data & Integration Layer**
+- DynamoDB: Primary database utilizing 5 tables with Point-in-Time Recovery (PITR) enabled.
+- EventBridge: Event bus for asynchronous event driven communication.
+- Secrets Manager: Secure storage for Stripe API keys and credentials.
+- External Integrations: Stripe for payment intents and webhooks; Amazon SES for transactional emails.
+
+**CI/CD Pipeline**
+- GitHub Actions: OIDC-authenticated deployment pipeline running security scans via Trivy and code quality checks via SonarQube before deployment.
+
 ## Structure
 
 ```
@@ -19,12 +96,14 @@ chonky-infra/
 │       └── main.tf
 ├── dynamodb_loader/              # Seeds the DynamoDB tables with dev/test data
 ├── dev_image_loader/             # Seeds an S3 bucket with placeholder product images
-└── modules/
-    ├── s3/                       # S3 bucket module
-    ├── cognito/                  # Cognito user pool + app client module
-    ├── ses/                      # SES domain identity + DKIM + SNS bounce/complaint module
-    ├── spa-hosting/              # S3 + CloudFront SPA hosting module
-    └── lambda/                   # Lambda function module
+├── modules/
+│   ├── s3/                       # S3 bucket module
+│   ├── cognito/                  # Cognito user pool + app client module
+│   ├── ses/                      # SES domain identity + DKIM + SNS bounce/complaint module
+│   ├── spa-hosting/              # S3 + CloudFront SPA hosting module
+│   └── lambda/                   # Lambda function module
+└── scripts/
+    └── new-env.sh                # Scaffolds/removes backends/<env>.hcl + <env>.tfvars for a new environment
 ```
 
 Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`, `main.tf`) even where not shown above.
@@ -39,6 +118,30 @@ Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`
 6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets)
 7. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
 8. **dev_image_loader/** — Provisions an S3 bucket + CloudFront (OAC) + Cloudflare DNS, then seeds it with placeholder product images (optional, dev convenience). Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
+
+## Adding a New Environment
+
+Every component in `deployments/` (plus `secrets/`, `dynamodb_loader/`, `dev_image_loader/`) follows the same per-environment shape: `backends/<env>.hcl` (S3 backend config) and `<env>.tfvars` (variables). `dev` and `production` already exist. For any other environment, use `scripts/new-env.sh` rather than hand-copying `dev`'s files — it makes the new environment's naming collision-proof by construction instead of discovering conflicts one `terraform apply` at a time (ask about `chonky-tfstate-production` or `chonky-admin-production` if you want the story — both turned out to already be claimed by other AWS accounts).
+
+```bash
+./scripts/new-env.sh staging
+```
+
+This generates, from each component's `dev.tfvars` / `backends/dev.hcl`:
+
+- `bootstrap/staging.tfvars` — bootstrap has no committed per-env tfvars beyond what's described in Quick Start below; this gives a new environment one instead of hand-editing `bootstrap/variables.tf`'s default.
+- `<component>/backends/staging.hcl` — S3 backend pointed at `chonky-tfstate-staging-<your-account-id>`. The account id is baked into the bucket name because S3 bucket names are unique across *all* AWS accounts, not just yours — this guarantees it can never collide with someone else's bucket the way `chonky-tfstate-production` did.
+- `<component>/staging.tfvars` — copied from `dev.tfvars`, with `env` updated and `*.chonkycat.ca` domains/callback URLs rewritten to a `staging-` prefix so they don't collide with production's bare domain either.
+
+It only writes files — it never runs Terraform or touches AWS. **Review the generated files before applying**, especially domain names, callback URLs, and any Cloudflare token or personal email copied verbatim from `dev.tfvars`. It refuses to overwrite existing files unless you pass `--force`, and refuses `dev`/`prod`/`production` as a name. Then deploy in the same order as above, pointing at `staging.tfvars` / `backends/staging.hcl` instead of `dev`'s.
+
+### Removing a Generated Environment
+
+```bash
+./scripts/new-env.sh staging --remove
+```
+
+Deletes the scaffold files `new-env.sh` created for that environment — nothing more. It does **not** run `terraform destroy` or touch any AWS resource. If the environment was actually applied, destroy its real infrastructure first (component by component, reverse of the deploy order above) — otherwise you're left with real S3 buckets/DynamoDB tables/Cognito pools/etc. still running with no local config left to manage them. Prompts for confirmation (type the environment name) unless you pass `--yes`.
 
 ## Secrets Management
 
@@ -81,14 +184,15 @@ Use AWS Secrets Manager, HashiCorp Vault, or your organization's secret manageme
 ## Quick Start
 
 ```bash
-# 1. Bootstrap (one-time)
+# 1. Bootstrap (one-time per environment) — bootstrap uses local state, not
+#    an S3 backend, and has no committed per-env tfvars beyond variables.tf's
+#    own default. dev/production are already set up this way; anything else
+#    should go through scripts/new-env.sh instead (see "Adding a New
+#    Environment" above), which generates a proper bootstrap/<env>.tfvars.
 cd bootstrap
 terraform init
-terraform apply
-
-# production, in its own workspace so its state never collides with dev's
-terraform workspace new production # not required if there is only one env
-terraform apply -var="env=production"
+terraform apply                  # dev — variables.tf's default env, no bucket_suffix
+terraform apply -var="env=prod"  # production — real bucket is chonky-tfstate-prod
 
 # 2. Secrets (set environment variables first)
 export TF_VAR_stripe_secret_key="your-stripe-key"

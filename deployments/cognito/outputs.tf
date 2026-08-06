@@ -1,18 +1,3 @@
-output "customers_user_pool_id" {
-  description = "Customers (storefront) user pool ID"
-  value       = module.customers.user_pool_id
-}
-
-output "customers_user_pool_arn" {
-  description = "Customers (storefront) user pool ARN"
-  value       = module.customers.user_pool_arn
-}
-
-output "customers_app_client_id" {
-  description = "Customers (storefront) app client ID"
-  value       = module.customers.app_client_id
-}
-
 output "admins_user_pool_id" {
   description = "Admins user pool ID"
   value       = module.admins.user_pool_id

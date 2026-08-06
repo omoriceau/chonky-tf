@@ -8,6 +8,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
     }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.0"
+    }
   }
 
   backend "s3" {}
@@ -39,6 +43,21 @@ data "terraform_remote_state" "cognito" {
   }
 }
 
+# chonky-cat-fe's Amplify app isn't Terraform-managed today (deployments/
+# amplify-fe/ exists but has never actually been applied — no state under
+# either tfstate bucket), so there's no remote state to read the id from
+# the way cognito's is above. The AWS provider also has no data source to
+# look up an existing Amplify app by name (aws_amplify_app is
+# resource-only), so this shells out directly instead — see
+# scripts/lookup-amplify-app-id.sh.
+data "external" "amplify_app" {
+  program = ["bash", "${path.module}/scripts/lookup-amplify-app-id.sh"]
+  query = {
+    name   = var.amplify_app_name
+    region = var.region
+  }
+}
+
 locals {
   state_env    = coalesce(var.state_env != "" ? var.state_env : null, var.env)
   checkout_dir = coalesce(var.checkout_dir != "" ? var.checkout_dir : null, "${path.module}/.be-checkout")
@@ -64,8 +83,9 @@ locals {
       "--admin-cognito-pool-id", data.terraform_remote_state.cognito.outputs.admins_user_pool_id,
       "--customer-cognito-pool-id", local.customer_pool_id,
       "--customer-cognito-client-id", local.customer_client_id,
+      "--amplify-app-id", data.external.amplify_app.result.app_id,
     ],
-    var.ses_domain != "" ? ["--ses-domain", var.ses_domain] : []
+    var.ses_domain != "" ? ["--ses-domain", var.ses_domain] : [],
   )
 
   # chonky-cat-be's .gitignore has a too-broad `python/` pattern that also
@@ -79,6 +99,16 @@ locals {
   # chonky-cat-be's own .gitignore/repo layout — flag it there instead.
   rebuild_shared_layer = "mkdir -p shared/python/shared && cp shared/*.py shared/python/shared/"
 
+  allow_production_env = "sed -i 's/dev|staging|prod)/dev|staging|prod|production)/' deploy-products.sh"
+
+  # Same problem one layer down: template.yaml's own Environment parameter
+  # has its own separate AllowedValues whitelist (SAM/CloudFormation
+  # rejects the changeset otherwise, independent of deploy-products.sh's
+  # bash-level check above). No Conditions in the template key off the
+  # exact string "prod" — Environment is only ever interpolated into names
+  # (e.g. chonky-images-${Environment}), so widening this is safe too.
+  allow_production_env_template = "sed -i 's/AllowedValues: \\[dev, staging, prod\\]/AllowedValues: [dev, staging, prod, production]/' template.yaml"
+
   # This module re-invokes deploy-products.sh on every terraform apply (that's
   # what "pull and deploy" means — always converge to whatever's on master).
   # But `sam deploy` treats "no changes to deploy" as a hard error, and this
@@ -90,6 +120,8 @@ locals {
   deploy_command = <<-EOT
     set -euo pipefail
     ${local.rebuild_shared_layer}
+    ${local.allow_production_env}
+    ${local.allow_production_env_template}
 
     set +e
     DEPLOY_OUTPUT=$(./deploy-products.sh ${join(" ", [for a in local.deploy_args : "\"${a}\""])} 2>&1)

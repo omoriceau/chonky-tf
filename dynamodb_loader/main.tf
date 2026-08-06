@@ -24,7 +24,7 @@ provider "aws" {
 data "terraform_remote_state" "dynamodb" {
   backend = "s3"
   config = {
-    bucket = "chonky-tfstate-${var.env}"
+    bucket = "chonky-tfstate-${var.state_env}"
     key    = "env/${var.env}/dynamodb/terraform.tfstate"
     region = var.region
   }
