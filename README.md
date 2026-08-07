@@ -115,9 +115,28 @@ Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`
 3. **deployments/dynamodb/** — Creates the DynamoDB tables (users, products, orders, payments, promotions)
 4. **deployments/cognito/** — Creates the Cognito user pools (customers, admins)
 5. **deployments/ses/** — Verifies the SES sending domain (DKIM, bounce/complaint tracking via SNS)
-6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets)
+6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets). **Also requires the chonky-cat-fe Amplify app to already exist** — see below.
 7. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
 8. **dev_image_loader/** — Provisions an S3 bucket + CloudFront (OAC) + Cloudflare DNS, then seeds it with placeholder product images (optional, dev convenience). Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
+
+### The Amplify app must be deployed manually before `deployments/lambdas`
+
+`deployments/lambdas` passes `--amplify-app-id` to `deploy-products.sh` so the
+backend's CORS logic (`shared/cors.py` in `chonky-cat-be`) can allow browser
+requests from `https://<branch>.<app-id>.amplifyapp.com`. It resolves that id
+by shelling out to `aws amplify list-apps` and filtering by name (see
+`deployments/lambdas/scripts/lookup-amplify-app-id.sh`) — **not** from
+Terraform state, since the AWS provider has no data source for looking up an
+existing Amplify app (`aws_amplify_app` is resource-only, for creating one),
+and `deployments/amplify-fe/` — which would create it — has never actually
+been applied.
+
+That means the Amplify app has to exist *before* `deployments/lambdas` can
+apply: connect the `chonky-cat-fe` GitHub repo in the Amplify Console (or
+however you provision it) first, under the same name
+`deployments/lambdas/variables.tf`'s `amplify_app_name` expects (default
+`"chonkycat-fe"`). If the lookup script can't find a matching app, it fails
+loudly rather than silently deploying with CORS broken.
 
 ## Adding a New Environment
 
