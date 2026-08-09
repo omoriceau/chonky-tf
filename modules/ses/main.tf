@@ -79,22 +79,67 @@ resource "cloudflare_record" "mail_from_spf" {
 # SES's event publishing, so bounces/complaints are observable instead of
 # silently eroding sender reputation (matters most for the newsletter).
 # ==============================================================================
-# AWS-managed KMS key (alias/aws/sns) accepted here — no ongoing
-# customer-managed-key cost/rotation for bounce/complaint notification topics.
-#trivy:ignore:AVD-AWS-0136
+# Customer-managed key, not the AWS-managed alias/aws/sns key: the AWS-managed
+# key's policy doesn't grant other services (e.g. SES) kms:GenerateDataKey /
+# kms:Decrypt, which makes SES fail to publish bounce/complaint events to an
+# alias/aws/sns-encrypted topic. A CMK with an explicit policy is required.
+data "aws_iam_policy_document" "sns_kms" {
+  count = var.enable_bounce_complaint_tracking ? 1 : 0
+
+  statement {
+    sid       = "EnableRootAccountAccess"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid       = "AllowSESPublishToSNS"
+    effect    = "Allow"
+    actions   = ["kms:GenerateDataKey", "kms:Decrypt"]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ses.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_kms_key" "sns" {
+  count               = var.enable_bounce_complaint_tracking ? 1 : 0
+  description         = "CMK for ${var.name_prefix} SES bounce/complaint SNS topics (${var.env})"
+  enable_key_rotation = true
+  policy              = data.aws_iam_policy_document.sns_kms[0].json
+}
+
+resource "aws_kms_alias" "sns" {
+  count         = var.enable_bounce_complaint_tracking ? 1 : 0
+  name          = "alias/${var.name_prefix}-ses-sns-${var.env}"
+  target_key_id = aws_kms_key.sns[0].key_id
+}
+
 resource "aws_sns_topic" "bounces" {
   count             = var.enable_bounce_complaint_tracking ? 1 : 0
   name              = "${var.name_prefix}-ses-bounces-${var.env}"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.sns[0].key_id
 }
 
-# AWS-managed KMS key (alias/aws/sns) accepted here — no ongoing
-# customer-managed-key cost/rotation for bounce/complaint notification topics.
-#trivy:ignore:AVD-AWS-0136
 resource "aws_sns_topic" "complaints" {
   count             = var.enable_bounce_complaint_tracking ? 1 : 0
   name              = "${var.name_prefix}-ses-complaints-${var.env}"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.sns[0].key_id
 }
 
 data "aws_iam_policy_document" "sns_publish_from_ses" {

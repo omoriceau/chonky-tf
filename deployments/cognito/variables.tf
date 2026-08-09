@@ -14,18 +14,6 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "customers_callback_urls" {
-  description = "OAuth callback URLs for the customers app client (only needed if hosted-UI/OAuth flows are used)"
-  type        = list(string)
-  default     = []
-}
-
-variable "customers_logout_urls" {
-  description = "OAuth logout URLs for the customers app client"
-  type        = list(string)
-  default     = []
-}
-
 variable "admins_callback_urls" {
   description = "OAuth callback URLs for the admins app client"
   type        = list(string)

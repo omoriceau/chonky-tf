@@ -25,3 +25,7 @@ output "distribution_domain_name" {
 output "certificate_arn" {
   value = aws_acm_certificate_validation.this.certificate_arn
 }
+
+output "github_actions_deploy_admin_role_arn" {
+  value = aws_iam_role.github_actions_deploy.arn
+}
