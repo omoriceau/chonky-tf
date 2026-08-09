@@ -104,6 +104,74 @@ import {
   id       = each.value
 }
 
+data "aws_iam_openid_connect_provider" "github_actions" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+# Assumed by .github/workflows/deploy.yml in chonkycat-admin (via
+# aws-actions/configure-aws-credentials OIDC) — trust is scoped to that
+# repo's master branch only, matching the workflow's `on: push: branches:
+# [master]` trigger.
+resource "aws_iam_role" "github_actions_deploy" {
+  name = "${var.name_prefix}-admin-github-actions-deploy-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = data.aws_iam_openid_connect_provider.github_actions.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:omoriceau/chonkycat-admin:ref:refs/heads/master"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Name        = "${var.name_prefix}-admin-github-actions-deploy-${var.env}"
+    Environment = var.env
+  }
+}
+
+# Scoped to exactly this bucket and this distribution — no broader S3/
+# CloudFront access, unlike chonky-cat-be-github-actions-deploy's use of
+# AWS-managed full-access policies.
+resource "aws_iam_role_policy" "github_actions_deploy_scoped" {
+  name = "admin-deploy-scoped"
+  role = aws_iam_role.github_actions_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SyncBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          module.hosting.bucket_arn,
+          "${module.hosting.bucket_arn}/*",
+        ]
+      },
+      {
+        Sid      = "InvalidateCloudFront"
+        Effect   = "Allow"
+        Action   = "cloudfront:CreateInvalidation"
+        Resource = module.hosting.distribution_arn
+      },
+    ]
+  })
+}
+
 # Points the domain at CloudFront. proxied = false — CloudFront already
 # terminates TLS and serves as the CDN; routing it through Cloudflare's
 # proxy too would add a second CDN layer and break the ACM cert's hostname

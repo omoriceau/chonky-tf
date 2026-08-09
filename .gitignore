@@ -16,3 +16,10 @@ crash.log
 # apply, never a developer's own working clone.
 .be-checkout/
 .be-checkout.commit
+
+__pycache__/
+*.pyc
+
+# disaster_recovery baseline snapshots are generated locally per-run, not
+# source-controlled deliverables.
+disaster_recovery/dr_baseline_*.json

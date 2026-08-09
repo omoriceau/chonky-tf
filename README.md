@@ -88,25 +88,30 @@ chonky-infra/
 ├── deployments/
 │   ├── dynamodb/                # DynamoDB tables (users/products/orders/payments/promotions)
 │   ├── cognito/                 # Cognito user pools (customers + admins)
-│   ├── admin-hosting/           # Admin SPA hosting (S3 + CloudFront, Cloudflare DNS)
+│   ├── admin-hosting/           # Admin SPA hosting (S3 + CloudFront, Cloudflare DNS, GitHub Actions OIDC deploy role)
 │   ├── ses/                     # SES domain identity, DKIM, bounce/complaint tracking
-│   └── lambdas/                 # chonky-cat-be backend: Lambdas, EventBridge, REST API
-│       ├── backends/
-│       ├── dev.tfvars
-│       └── main.tf
+│   ├── lambdas/                 # chonky-cat-be backend: Lambdas, EventBridge, REST API
+│   │   ├── backends/
+│   │   ├── dev.tfvars
+│   │   └── main.tf
+│   └── amplify-fe/              # chonky-cat-fe customer storefront hosting (AWS Amplify Gen2 + IAM deploy role)
 ├── dynamodb_loader/              # Seeds the DynamoDB tables with dev/test data
 ├── dev_image_loader/             # Seeds an S3 bucket with placeholder product images
+├── disaster_recovery/            # DR demo script + baseline captures (see DISASTER_RECOVERY.md)
 ├── modules/
 │   ├── s3/                       # S3 bucket module
 │   ├── cognito/                  # Cognito user pool + app client module
 │   ├── ses/                      # SES domain identity + DKIM + SNS bounce/complaint module
 │   ├── spa-hosting/              # S3 + CloudFront SPA hosting module
-│   └── lambda/                   # Lambda function module
+│   ├── lambda/                   # Lambda function module
+│   └── git_deploy/               # Generic git-clone-and-run-a-command module (used by lambdas' backend checkout)
 └── scripts/
     └── new-env.sh                # Scaffolds/removes backends/<env>.hcl + <env>.tfvars for a new environment
 ```
 
 Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`, `main.tf`) even where not shown above.
+
+See [DISASTER_RECOVERY.md](./DISASTER_RECOVERY.md) for the DynamoDB point-in-time-recovery runbook.
 
 ## Deployment Order
 
@@ -116,8 +121,11 @@ Each `deployments/*` directory follows the same shape (`backends/`, `dev.tfvars`
 4. **deployments/cognito/** — Creates the Cognito user pools (customers, admins)
 5. **deployments/ses/** — Verifies the SES sending domain (DKIM, bounce/complaint tracking via SNS)
 6. **deployments/lambdas/** — Deploys the chonky-cat-be backend: Lambda functions, shared layer, EventBridge bus/rule, and REST API Gateway (depends on dynamodb + secrets). **Also requires the chonky-cat-fe Amplify app to already exist** — see below.
-7. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
-8. **dev_image_loader/** — Provisions an S3 bucket + CloudFront (OAC) + Cloudflare DNS, then seeds it with placeholder product images (optional, dev convenience). Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
+7. **deployments/admin-hosting/** — Admin SPA hosting: S3 + CloudFront (Cloudflare DNS), plus a GitHub Actions OIDC role scoped to the `chonkycat-admin` repo's deploy workflow. Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
+8. **dynamodb_loader/** — Seeds the DynamoDB tables with dev/test data (optional, dev convenience)
+9. **dev_image_loader/** — Provisions an S3 bucket + CloudFront (OAC) + Cloudflare DNS, then seeds it with placeholder product images (optional, dev convenience). Requires `TF_VAR_cloudflare_api_token` / `TF_VAR_cloudflare_zone_id`, same as `deployments/ses`.
+
+`deployments/amplify-fe/` exists as Terraform code for the customer storefront's Amplify app + IAM deploy role, but has never actually been applied — the real app was connected manually. See "The Amplify app must be deployed manually" below.
 
 ### The Amplify app must be deployed manually before `deployments/lambdas`
 
