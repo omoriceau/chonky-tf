@@ -9,6 +9,24 @@ variable "env" {
   type        = string
 }
 
+variable "state_env" {
+  description = "Env suffix for the tfstate bucket name (chonky-tfstate-<state_env>) used to look up the cognito remote state. Defaults to matching `env`, but can diverge — e.g. production uses bucket \"chonky-tfstate-prod\" since \"chonky-tfstate-production\" is a globally squatted name owned by another AWS account."
+  type        = string
+  default     = ""
+}
+
+variable "customer_cognito_pool_id" {
+  description = "Pins the customer Cognito pool id instead of reading it from cognito's remote state. Needed where the customer pool is owned by chonky-cat-fe's Amplify Gen2 backend rather than the deployments/cognito Terraform stack (e.g. production) — remote state won't have a customers_user_pool_id output in that case. Leave empty to fall back to remote state (e.g. dev, where deployments/cognito does own the customer pool)."
+  type        = string
+  default     = ""
+}
+
+variable "customer_cognito_client_id" {
+  description = "Pins the customer Cognito app client id instead of reading it from cognito's remote state. See customer_cognito_pool_id."
+  type        = string
+  default     = ""
+}
+
 variable "dev_email" {
   description = "DevEmail parameter passed to deploy-products.sh (SES sandbox test recipient)"
   type        = string
