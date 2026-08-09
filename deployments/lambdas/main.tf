@@ -33,14 +33,24 @@ provider "cloudflare" {
 data "terraform_remote_state" "cognito" {
   backend = "s3"
   config = {
-    bucket = "chonky-tfstate-${var.env}"
+    bucket = "chonky-tfstate-${local.state_env}"
     key    = "env/${var.env}/cognito/terraform.tfstate"
     region = var.region
   }
 }
 
 locals {
+  state_env    = coalesce(var.state_env != "" ? var.state_env : null, var.env)
   checkout_dir = coalesce(var.checkout_dir != "" ? var.checkout_dir : null, "${path.module}/.be-checkout")
+
+  # customers_user_pool_id/customers_app_client_id only exist in cognito's
+  # remote state where deployments/cognito's own "customers" module was
+  # actually applied — not true in production, where that pool is owned by
+  # chonky-cat-fe's Amplify Gen2 backend instead (see customer_cognito_pool_id's
+  # description). try() avoids a hard error reading a missing output on envs
+  # that pin the value explicitly instead of relying on remote state.
+  customer_pool_id   = coalesce(var.customer_cognito_pool_id != "" ? var.customer_cognito_pool_id : null, try(data.terraform_remote_state.cognito.outputs.customers_user_pool_id, null))
+  customer_client_id = coalesce(var.customer_cognito_client_id != "" ? var.customer_cognito_client_id : null, try(data.terraform_remote_state.cognito.outputs.customers_app_client_id, null))
 
   # deploy-products.sh itself verifies the DynamoDB tables exist and creates
   # the S3 SAM-artifacts bucket / EventBridge bus if missing — this module
@@ -52,8 +62,8 @@ locals {
       "--region", var.region,
       "--dev-email", var.dev_email,
       "--admin-cognito-pool-id", data.terraform_remote_state.cognito.outputs.admins_user_pool_id,
-      "--customer-cognito-pool-id", data.terraform_remote_state.cognito.outputs.customers_user_pool_id,
-      "--customer-cognito-client-id", data.terraform_remote_state.cognito.outputs.customers_app_client_id,
+      "--customer-cognito-pool-id", local.customer_pool_id,
+      "--customer-cognito-client-id", local.customer_client_id,
     ],
     var.ses_domain != "" ? ["--ses-domain", var.ses_domain] : []
   )
